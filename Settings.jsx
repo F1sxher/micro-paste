@@ -52,10 +52,9 @@ const HOST_OPTIONS = [
   { label: "i.atlas.bot", jsx: () => <p>i.atlas.bot</p>, set: "iab" },
 ]
 
-exports.EXT_OPTIONS = EXT_OPTIONS
-exports.HOST_OPTIONS = HOST_OPTIONS
-
 module.exports = class MicroPastePluginSettings extends React.PureComponent {
+  HOST_OPTIONS = HOST_OPTIONS;
+
   constructor(props) {
     super(props)
     this.state = {

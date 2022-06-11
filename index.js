@@ -63,7 +63,24 @@ async function encryptContent (content) {
 /**
  * 
  * @param {[string]} args 
- * @returns 
+ * @param {any} setings
+ * @returns {boolean | string}
+ */
+function getClipboard(args, settings) {
+  if (!!args.includes('--clipboard')) {
+    return clipboard.readText()
+  } else if (settings.get('clip', true)) {
+    return clipboard.readText()
+  } else {
+    return false
+  }
+}
+
+
+/**
+ * 
+ * @param {[string]} args 
+ * @returns {string}
  */
 function getPassedText(args) {
   args.slice(args.indexOf('--text'))
@@ -73,10 +90,7 @@ function getPassedText(args) {
 
 module.exports = class MicroPaste extends Plugin {
   startPlugin () {
-    const domain = this.settings.get('domain', 'https://micro.sylo.digital');
-    const authHeaderName = this.settings.get('authHeaderName', 'Authorization');
-    const authKey = this.settings.get('authKey', '');
-
+    const HOST_OPTIONS = new Settings().HOST_OPTIONS;
     powercord.api.settings.registerSettings('micro-paste', {
       category: this.entityID,
       label: 'Micro Paste',
@@ -93,6 +107,17 @@ module.exports = class MicroPaste extends Plugin {
        * @returns 
        */
       executor: async (args) => {
+        const domain = this.settings.get('domain', 'https://micro.sylo.digital');
+        const authHeaderName = this.settings.get('authHeaderName', 'Authorization');
+        const authKey = this.settings.get('authKey', '');
+
+        let pickedDomain = "micro.sylo.digital"
+        HOST_OPTIONS.forEach(obj => {
+          obj.enabled = this.settings.get(`allowHost_${obj.set}}`, false);
+          if (obj.enabled) pickedDomain = obj.label
+        });
+        
+
         /**
          * @type {boolean}
          */
@@ -103,10 +128,7 @@ module.exports = class MicroPaste extends Plugin {
         /**
          * @type {boolean | string}
          */
-        const clipText = args.includes('--clipboard')
-          ? clipboard.readText()
-          : this.settings.get('clip', true) ? clipboard.readText() 
-          : await this.parseArguments(args);
+        const clipText = getClipboard(args, this.settings)
 
         /**
          * @type {boolean | string}
@@ -173,9 +195,6 @@ module.exports = class MicroPaste extends Plugin {
             result: `Invalid arguments. Run \`${powercord.api.commands.prefix}help paste\` for more information.`
           };
         }
-        console.log(encrypt)
-        console.log(encryptS)
-        console.log(noEncrypt)
 
         const body = {
           burn: (burn || (burnS && !noBurn)) ? true : false,
@@ -198,10 +217,21 @@ module.exports = class MicroPaste extends Plugin {
         const pasteBody = JSON.stringify(body);
 
         try {
-          const body = await microPost(`${domain}/api/paste`, pasteBody, authKey);
+          const body = await microPost(`${domain}/api/paste`, pasteBody, authHeaderName , authKey);
+          if (body.statusCode >= 500) {
+            return {
+              send: false,
+              result: `A server-side error occured: \`${body.message}\``
+            }
+          } else if (body.statusCode >= 400) {
+            return {
+              send: false,
+              result: `Something went wrong on your end, check the auth key maybe? Message: \`${body.message}\``
+            }
+          }
           return {
             send,
-            result: encryptionKey === false ? `${domain}/p/${body.id}` : `${domain}/p/${body.id}#key=${encryptionKey}`
+            result: encryptionKey === false ? `https://${pickedDomain}/p/${body.id}` : `https:/${pickedDomain}/p/${body.id}#key=${encryptionKey}`
           };
         } catch (e) {
           return {
