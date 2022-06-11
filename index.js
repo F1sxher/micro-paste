@@ -231,7 +231,7 @@ module.exports = class MicroPaste extends Plugin {
           }
           return {
             send,
-            result: encryptionKey === false ? `https://${pickedDomain}/p/${body.id}` : `https:/${pickedDomain}/p/${body.id}#key=${encryptionKey}`
+            result: encryptionKey === false ? `https://${pickedDomain}/p/${body.id}` : `https://${pickedDomain}/p/${body.id}#key=${encryptionKey}`
           };
         } catch (e) {
           return {
