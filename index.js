@@ -4,12 +4,12 @@ const { clipboard } = require('electron');
 const undici = require('undici');
 const Settings = require('./Settings.jsx');
 
-const microPost = async (url, body, authHeaderName, authKey) => {
+const microPost = async (url, body, authKey) => {
   const req = await undici.request(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      [authHeaderName]: authKey
+      Authorization: authKey
     },
     body
   });
@@ -100,12 +100,7 @@ module.exports = class MicroPaste extends Plugin {
     powercord.api.commands.registerCommand({
       command: 'paste',
       description: 'Lets you paste content to Micro',
-      usage: '{c} [--send] <--clipboard | FILE_URL> <--encrypt> <--burn> <--paranoid> <--extension MD/whateveridk> <--text [your text here if you dont want to use clipboard]>',
-      /**
-       * 
-       * @param {[string]} args 
-       * @returns 
-       */
+      usage: '{c} [--send] <--clipboard | FILE_URL> <--encrypt> <--burn> <--paranoid> <--extension MD/whateveridk>',
       executor: async (args) => {
         const domain = this.settings.get('domain', 'https://micro.sylo.digital');
         const authHeaderName = this.settings.get('authHeaderName', 'Authorization');
@@ -130,66 +125,17 @@ module.exports = class MicroPaste extends Plugin {
          */
         const clipText = getClipboard(args, this.settings)
 
-        /**
-         * @type {boolean | string}
-         */
-        const passText = !!args.includes('--text')
-          ? getPassedText(args)
-          : await this.parseArguments(args)
-
-        /**
-         * @type {string}
-         */
-        const extension = !!args.includes('--extension')
+        const extension = args.includes('--extension')
           ? args[args.indexOf('--extension') + 1]
-          : this.settings.get('ext', 'md');
+          : 'md';
 
-        /**
-         * @type {boolean}
-         */
-        const encrypt = !!args.includes('--encrypt')
-        
-        /**
-         * @type {boolean}
-         */
-         const encryptS = !!this.settings.get('encrypt', false)
-        
-        /**
-         * @type {boolean}
-         */
-        const noEncrypt = !!args.includes('--no-encrypt')
+        const encrypt = !!args.includes('--encrypt');
 
-        /**
-         * @type {boolean}
-         */
-        const paranoid = !!args.includes('--paranoid')
+        const paranoid = !!args.includes('--paranoid');
 
-        /**
-         * @type {boolean}
-         */
-        const paranoidS = !!this.settings.get('burn', false)
+        const burn = !!args.includes('--burn');
 
-        /**
-         * @type {boolean}
-         */
-        const noParanoid = !!args.includes('--no-paranoid')
-
-        /**
-         * @type {boolean}
-         */
-        const burn = !!args.includes('--burn')
-        
-        /**
-         * @type {boolean}
-         */
-        const burnS = !!this.settings.get('burn', false)
-
-        /**
-         * @type {boolean}
-         */
-        const noBurn = !!args.includes('--no-burn')
-
-        if (!clipText && !passText) {
+        if (!text) {
           return {
             send: false,
             result: `Invalid arguments. Run \`${powercord.api.commands.prefix}help paste\` for more information.`
@@ -197,18 +143,18 @@ module.exports = class MicroPaste extends Plugin {
         }
 
         const body = {
-          burn: (burn || (burnS && !noBurn)) ? true : false,
-          content: passText || clipText,
-          encrypted: (encrypt || (encryptS && !noEncrypt)) ? true : false,
-          expiresAt: Date.now() + 3600000 * this.settings.get('expiry', 24),
+          burn,
+          content: text,
+          encrypted: false,
+          expiresAt: Date.now() + 86400000,
           extension,
-          paranoid: (paranoid || (paranoidS && !noParanoid)) ? true : false
+          paranoid
         };
 
         let encryptionKey = false;
 
         if (encrypt) {
-          const result = passText ? await encryptContent(passText) : await encryptContent(clipText);
+          const result = await encryptContent(text);
           body.encrypted = true;
           body.content = result.encryptedContent;
           encryptionKey = result.key;
