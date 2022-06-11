@@ -4,12 +4,12 @@ const { clipboard } = require('electron');
 const undici = require('undici');
 const Settings = require('./Settings.jsx');
 
-const microPost = async (url, body, authKey) => {
+const microPost = async (url, body, authHeaderName, authKey) => {
   const req = await undici.request(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      Authorization: authKey
+      [authHeaderName]: authKey
     },
     body
   });
@@ -60,9 +60,21 @@ async function encryptContent (content) {
   };
 }
 
+/**
+ * 
+ * @param {[string]} args 
+ * @returns 
+ */
+function getPassedText(args) {
+  args.slice(args.indexOf('--text'))
+  args.shift()
+  return args.join(" ")
+}
+
 module.exports = class MicroPaste extends Plugin {
   startPlugin () {
     const domain = this.settings.get('domain', 'https://micro.sylo.digital');
+    const authHeaderName = this.settings.get('authHeaderName', 'Authorization');
     const authKey = this.settings.get('authKey', '');
 
     powercord.api.settings.registerSettings('micro-paste', {
@@ -74,46 +86,110 @@ module.exports = class MicroPaste extends Plugin {
     powercord.api.commands.registerCommand({
       command: 'paste',
       description: 'Lets you paste content to Micro',
-      usage: '{c} [--send] <--clipboard | FILE_URL> <--encrypt> <--burn> <--paranoid> <--extension MD/whateveridk>',
+      usage: '{c} [--send] <--clipboard | FILE_URL> <--encrypt> <--burn> <--paranoid> <--extension MD/whateveridk> <--text [your text here if you dont want to use clipboard]>',
+      /**
+       * 
+       * @param {[string]} args 
+       * @returns 
+       */
       executor: async (args) => {
+        /**
+         * @type {boolean}
+         */
         const send = args.includes('--send')
           ? !!args.splice(args.indexOf('--send'), 1)
           : this.settings.get('send', false);
 
-        const text = args.includes('--clipboard')
+        /**
+         * @type {boolean | string}
+         */
+        const clipText = args.includes('--clipboard')
           ? clipboard.readText()
+          : this.settings.get('clip', true) ? clipboard.readText() 
           : await this.parseArguments(args);
 
-        const extension = args.includes('--extension')
+        /**
+         * @type {boolean | string}
+         */
+        const passText = !!args.includes('--text')
+          ? getPassedText(args)
+          : await this.parseArguments(args)
+
+        /**
+         * @type {string}
+         */
+        const extension = !!args.includes('--extension')
           ? args[args.indexOf('--extension') + 1]
-          : 'md';
+          : this.settings.get('ext', 'md');
 
-        const encrypt = !!args.includes('--encrypt');
+        /**
+         * @type {boolean}
+         */
+        const encrypt = !!args.includes('--encrypt')
+        
+        /**
+         * @type {boolean}
+         */
+         const encryptS = !!this.settings.get('encrypt', false)
+        
+        /**
+         * @type {boolean}
+         */
+        const noEncrypt = !!args.includes('--no-encrypt')
 
-        const paranoid = !!args.includes('--paranoid');
+        /**
+         * @type {boolean}
+         */
+        const paranoid = !!args.includes('--paranoid')
 
-        const burn = !!args.includes('--burn');
+        /**
+         * @type {boolean}
+         */
+        const paranoidS = !!this.settings.get('burn', false)
 
-        if (!text) {
+        /**
+         * @type {boolean}
+         */
+        const noParanoid = !!args.includes('--no-paranoid')
+
+        /**
+         * @type {boolean}
+         */
+        const burn = !!args.includes('--burn')
+        
+        /**
+         * @type {boolean}
+         */
+        const burnS = !!this.settings.get('burn', false)
+
+        /**
+         * @type {boolean}
+         */
+        const noBurn = !!args.includes('--no-burn')
+
+        if (!clipText && !passText) {
           return {
             send: false,
             result: `Invalid arguments. Run \`${powercord.api.commands.prefix}help paste\` for more information.`
           };
         }
+        console.log(encrypt)
+        console.log(encryptS)
+        console.log(noEncrypt)
 
         const body = {
-          burn,
-          content: text,
-          encrypted: false,
-          expiresAt: Date.now() + 86400000,
+          burn: (burn || (burnS && !noBurn)) ? true : false,
+          content: passText || clipText,
+          encrypted: (encrypt || (encryptS && !noEncrypt)) ? true : false,
+          expiresAt: Date.now() + 3600000 * this.settings.get('expiry', 24),
           extension,
-          paranoid
+          paranoid: (paranoid || (paranoidS && !noParanoid)) ? true : false
         };
 
         let encryptionKey = false;
 
         if (encrypt) {
-          const result = await encryptContent(text);
+          const result = passText ? await encryptContent(passText) : await encryptContent(clipText);
           body.encrypted = true;
           body.content = result.encryptedContent;
           encryptionKey = result.key;
@@ -123,7 +199,6 @@ module.exports = class MicroPaste extends Plugin {
 
         try {
           const body = await microPost(`${domain}/api/paste`, pasteBody, authKey);
-          console.log(body);
           return {
             send,
             result: encryptionKey === false ? `${domain}/p/${body.id}` : `${domain}/p/${body.id}#key=${encryptionKey}`
